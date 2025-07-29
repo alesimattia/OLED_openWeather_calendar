@@ -7,200 +7,286 @@
 #include <ESP8266HTTPClient.h>
 #include <time.h>
 #include "config.h"
+#include "icons.h"
 
 const char* ssid = SSID;
 const char* password = SSID_PASSWORD;
 
 // OpenWeatherMap config
 const String apiKey = APIKEY;
-const String city = CITY; //e.g. "Ancona,it"
+const String lat = (String)LAT;
+const String lon = (String)LON;
 const String units = "metric";
+const short forecastNumber = 3;
 
 // Display SSD1309 I2C 128x64
-U8G2_SSD1309_128X64_NONAME0_F_HW_I2C u8g2(U8G2_R0);
+/* https://github.com/olikraus/u8g2/wiki/u8g2setupc */
+U8G2_SSD1309_128X64_NONAME0_1_HW_I2C u8g2(U8G2_R0);
 
-// NTP
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600, 60000);
 
-// Dati meteo e orario
-String currentTemp = "--";
-String currentDescription = "--";
-float forecastTemp[6];
-String forecastTimes[6];
-String currentTime = "--:--";
+
 int currentDay = 1;
-int humidity = 0;
-int pressure = 0;
+int currentHum = 0;
+//int currentPress = 0;
+double currentTemp = 0.0;
+double forecastTemp[forecastNumber] = {00.0};
+String forecastTimes[forecastNumber];
+String forecastIcons[forecastNumber];
+
+String currentTime = "--:--";
+String currentDescription = "--";
 String sunriseTime = "--:--";
 String sunsetTime = "--:--";
 
-// Weather update interval
-const unsigned long updateInterval = UPDATE_INTERVAL * 60 * 1000; //UPDATE_INTERVAL [minutes]
 unsigned long lastUpdate = 0;
+const unsigned long updateInterval = UPDATE_INTERVAL * 60 * 1000;  //[minutes]
 
-// Freccia animata
-int arrowPos = 0;
-bool arrowDirection = true;
+/*** https://openweathermap.org/api/hourly-forecast ***/
+const String currentWeatherURL = "https://api.openweathermap.org/data/2.5/weather?lat="+lat + "&lon="+lon + "&appid="+apiKey + "&units=metric&lang=it";
+const String forecastURL =      "https://api.openweathermap.org/data/2.5/forecast?lat="+lat + "&lon="+lon + "&appid="+apiKey + "&cnt="+forecastNumber+ "&units=metric&lang=it";
 
-// Icone bitmap (16x16) -- qui definisci le icone come già mostrato
-// ... (per brevità le puoi copiare da sopra)
 
 String httpGETRequest(const char* serverName) {
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(client, serverName);
-  int httpResponseCode = http.GET();
-  String payload = "{}";
-  if (httpResponseCode == 200) payload = http.getString();
-  http.end();
-  return payload;
+	Serial.println(String(serverName));
+
+	WiFiClientSecure client;
+	client.setInsecure();  // Disabilita la verifica del certificato (solo per test)
+
+	HTTPClient https;
+	if (https.begin(client, serverName)) {
+		int httpCode = https.GET();
+		if (httpCode == HTTP_CODE_OK) {
+			String payload = https.getString();
+			https.end();
+			return payload;
+		} 
+		else {
+			String error = String(https.errorToString(httpCode));
+			Serial.println("[HTTPS] GET... failed, error:\n" + error);
+			https.end();
+			return error;
+		}
+	} 
+	else {
+		Serial.println("[HTTPS] Unable to connect");
+		return "{}";
+	}
 }
 
-void fetchWeatherData() {
-  String path = "http://api.openweathermap.org/data/2.5/forecast?q=" + city + "&appid=" + apiKey + "&units=" + units;
-  String response = httpGETRequest(path.c_str());
-  StaticJsonDocument<8192> doc;
-  if (deserializeJson(doc, response)) return;
-  currentTemp = String(doc["list"][0]["main"]["temp"].as<float>(), 1) + "°C";
-  currentDescription = doc["list"][0]["weather"][0]["main"].as<String>();
-  humidity = doc["list"][0]["main"]["humidity"].as<int>();
-  pressure = doc["list"][0]["main"]["pressure"].as<int>();
-  for (int i = 0; i < 6; i++) {
-	forecastTemp[i] = doc["list"][i]["main"]["temp"].as<float>();
-	forecastTimes[i] = String(doc["list"][i]["dt_txt"].as<String>()).substring(11, 16);
-  }
+
+void getWeatherData() {
+	String currentWeather = httpGETRequest(currentWeatherURL.c_str());
+
+	JsonDocument jsonCurrentWeather;
+	DeserializationError error = deserializeJson(jsonCurrentWeather, currentWeather);
+	if (error != DeserializationError::Ok) {
+		Serial.println("Error parsing JSON : " + String(error.c_str()));
+		return;
+	}
+
+	currentHum = (int)jsonCurrentWeather["main"]["humidity"];
+	currentTemp = (double)jsonCurrentWeather["main"]["temp"].as<double>();
+	currentDescription = String(jsonCurrentWeather["weather"][0]["main"]);
+	time_t sunrise = (time_t)jsonCurrentWeather["sys"]["sunrise"];
+	time_t sunset = (time_t)jsonCurrentWeather["sys"]["sunset"];
+
+	struct tm* ti;
+	ti = localtime(&sunrise);
+	sunriseTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
+	ti = localtime(&sunset);
+	sunsetTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
+
+	Serial.println("Current Humidity: " + String(currentHum));
+	Serial.println("Current Temperature: " + String(currentTemp));
+	Serial.println("Current Description: " + currentDescription);
+	//currentPress = jsonCurrentWeather["main"]["currentPress"].as<int>();
+	Serial.println("Sunrise Time: " + sunriseTime);
+	Serial.println("Sunset Time: " + sunsetTime);
+	Serial.println("Current Weather:\n" + currentWeather);
 }
 
-void fetchSunTimes() {
-  String path = "http://api.openweathermap.org/data/2.5/weather?q=" + city + "&appid=" + apiKey + "&units=" + units;
-  String response = httpGETRequest(path.c_str());
-  StaticJsonDocument<4096> doc;
-  if (deserializeJson(doc, response)) return;
-  time_t sunrise = doc["sys"]["sunrise"].as<time_t>();
-  time_t sunset = doc["sys"]["sunset"].as<time_t>();
-  struct tm *ti;
-  ti = localtime(&sunrise);
-  sunriseTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
-  ti = localtime(&sunset);
-  sunsetTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
+
+
+void getForecast() {
+	String forecast = httpGETRequest(forecastURL.c_str());
+
+	JsonDocument jsonForecast;
+	DeserializationError error = deserializeJson(jsonForecast, forecast);
+	if (error != DeserializationError::Ok) {
+		Serial.println("Error parsing JSON : " + String(error.c_str()));
+		return;
+	}
+
+	for (int i = 0; i < forecastNumber; i++) {
+		forecastTemp[i] = (double)jsonForecast["list"][i]["main"]["feels_like"].as<double>();
+		forecastIcons[i] = String(jsonForecast["list"][i]["weather"][0]["main"]);
+		String dt_txt = String(jsonForecast["list"][i]["dt_txt"]);
+		forecastTimes[i] = dt_txt.substring(11, 16);
+
+		Serial.printf("Previsione +%s h: %.1f°C | %s\n",
+					forecastTimes[i].c_str(), forecastTemp[i], forecastIcons[i].c_str());
+	}
 }
+
+
 
 void updateCurrentTime() {
-  time_t raw = timeClient.getEpochTime();
-  struct tm *ti = localtime(&raw);
-  currentTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
-  currentDay = ti->tm_mday;
-}
-
-void drawCalendar() {
-  if (currentDay < 1 || currentDay > 31) currentDay = 1;
-  int day = 1;
-  for (int y = 0; y < 5; y++) {
-    for (int x = 0; x < 7 && day <= 31; x++) {
-      int px = 2 + x * 16;
-      int py = 10 + y * 10;
-      if (day == currentDay) {
-        u8g2.drawBox(px - 1, py - 8, 14, 10);
-        u8g2.setDrawColor(0);
-        u8g2.setCursor(px, py);
-        u8g2.print(day);
-        u8g2.setDrawColor(1);
-      } else {
-        u8g2.setCursor(px, py);
-        u8g2.print(day);
-      }
-      day++;
-    }
-  }
+	time_t raw = timeClient.getEpochTime();
+	struct tm* ti = localtime(&raw);
+	currentTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
+	currentDay = ti->tm_mday;
+	if (currentDay < 1 || currentDay > 31) currentDay = 1;  // Fallback in case of invalid day
+															//Serial.println("Current time: " + currentTime + " | Day: " + String(currentDay));
 }
 
 
-void drawCurrentWeather() {
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.setCursor(85, 10); u8g2.print(currentTemp);
-  u8g2.setCursor(85, 20); u8g2.print(currentDescription);
-  u8g2.setCursor(85, 30); u8g2.print(currentTime);
+
+void drawWeatherInfo() {
+    float bmeTemp = 88.8;
+    int bmeHum = 88;
+
+    u8g2.setFont(u8g2_font_5x8_mf);
+    
+    // Temperatura BME280 in alto a sinistra
+    int leftX = 2;
+    u8g2.setCursor(leftX, 8);  // Modificato per altezza font 8px
+    u8g2.print("T:");
+    u8g2.print(bmeTemp, 1);
+    u8g2.print("C");
+
+    // Umidità BME280 sotto la temperatura
+    u8g2.setCursor(leftX, 18);  // Modificato per spaziatura appropriata
+    u8g2.print("H:");
+    u8g2.print(bmeHum);
+    u8g2.print("%");
+
+    // Alba e tramonto al centro
+    int centerX = 64;
+    // Alba con icona a sinistra
+    u8g2.drawXBMP(centerX - 24, 2, 8, 8, icon_arrow_up);
+    u8g2.setCursor(centerX - 14, 8);  // Allineato con altezza font
+    u8g2.print(sunriseTime);
+
+    // Tramonto con icona a sinistra
+    u8g2.drawXBMP(centerX - 24, 12, 8, 8, icon_arrow_down);
+    u8g2.setCursor(centerX - 14, 18);  // Allineato sotto alba
+    u8g2.print(sunsetTime);
+
+    // Orario attuale in alto a destra
+    int timeW = u8g2.getStrWidth(currentTime.c_str()) + 6; // Ridotto padding
+    int timeH = 10;  // Ridotto per il font più piccolo
+    int timeX = 128 - (timeW + 2);
+    int timeY = 2;
+    u8g2.setDrawColor(1);
+    u8g2.drawRBox(timeX, timeY, timeW, timeH, 2); // Ridotto raggio angoli
+    u8g2.setDrawColor(0);
+    u8g2.setCursor(timeX + 3, timeY + 8); // Modificato per centrare nel box più piccolo
+    u8g2.print(currentTime);
+    u8g2.setDrawColor(1);
 }
 
 void drawForecast() {
-  u8g2.setFont(u8g2_font_5x8_tr);
-  for (int i = 0; i < 6; i++) {
-	u8g2.setCursor(5 + i * 20, 45); u8g2.print(String(forecastTemp[i], 0) + "°");
-	u8g2.setCursor(5 + i * 20, 55); u8g2.print(forecastTimes[i]);
-  }
+    int elemW = 32;
+    int elemH = 32;
+    int iconSize = 16;
+    int baseY = 24;  // Abbassato leggermente
+
+    u8g2.setFont(u8g2_font_5x8_mf);
+
+    for (int i = 0; i < 4; i++) {
+        int x = i * elemW;
+        
+        // Icona meteo
+        int iconX = x + (elemW - iconSize) / 2;
+        u8g2.drawXBMP(iconX, baseY, iconSize, iconSize, 
+            i < 3 ? getWeatherIcon(forecastIcons[i]) : getWeatherIcon(currentDescription));
+
+        // Temperatura sotto l'icona
+        String temp = String(i < 3 ? forecastTemp[i] : currentTemp, 0) + "°";
+        int tempW = u8g2.getStrWidth(temp.c_str());
+        u8g2.setCursor(x + (elemW - tempW) / 2, baseY + iconSize + 8); // Modificato per font più piccolo
+
+        // Orario sotto la temperatura
+        String time = i < 3 ? forecastTimes[i] : currentTime;
+        int timeW = u8g2.getStrWidth(time.c_str()) + 6; // Ridotto padding
+        int timeH = 10; // Ridotto per il font più piccolo
+        int timeX = x + (elemW - timeW) / 2;
+        int timeY = baseY + iconSize + 10;
+        
+        u8g2.setDrawColor(1);
+        u8g2.drawRBox(timeX, timeY, timeW, timeH, 2); // Ridotto raggio angoli
+        u8g2.setDrawColor(0);
+        u8g2.setCursor(timeX + 3, timeY + 8); // Modificato per centrare nel box più piccolo
+        u8g2.print(time);
+        u8g2.setDrawColor(1);
+    }
 }
 
-void drawArrow() {
-  int y = 60, x = 5 + arrowPos * 20;
-  u8g2.drawTriangle(x, y, x + 5, y - 3, x + 5, y + 3);
-}
-
-void drawHumidityPressure() {
-  u8g2.setFont(u8g2_font_5x8_tr);
-  u8g2.setCursor(85, 40); u8g2.print("H:"); u8g2.print(humidity); u8g2.print("%");
-  u8g2.setCursor(85, 48); u8g2.print("P:"); u8g2.print(pressure); u8g2.print("hPa");
-}
-
-void drawSunTimes() {
-  u8g2.setFont(u8g2_font_5x8_tr);
-  u8g2.setCursor(85, 56); u8g2.print("S:"); u8g2.print(sunriseTime);
-  u8g2.setCursor(85, 64); u8g2.print("s:"); u8g2.print(sunsetTime);
-}
-
-//-------------------------------------------------------------//
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("\n------Setup------");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(300);
-  Serial.println("Wireless intensity:" + String(WiFi.RSSI() ));
-  Serial.println("------Wifi Connected------");
-  timeClient.begin();
-  Serial.println("------Time client started------");
-  u8g2.begin();
-  Serial.println("------LCD started------");
-  fetchWeatherData();
-  Serial.println("------Weather data fetched------");
-  fetchSunTimes();
-  timeClient.update();
-  Serial.println("------Time client updated------");
-  updateCurrentTime();
-  Serial.println("------Current Time updated------");
-  lastUpdate = millis();
+	Serial.begin(115200);
+	Serial.println("\nSetup");
+	WiFi.forceSleepBegin();
+	delay(100);
+	WiFi.mode(WIFI_OFF);
+	delay(100);
+	WiFi.mode(WIFI_STA);
+	delay(100);
+	WiFi.forceSleepWake();
+	delay(100);
+  	WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+	WiFi.hostname("ESP-host");
+	WiFi.setSleepMode(WIFI_NONE_SLEEP);
+	
+	WiFi.begin(ssid, password);
+	/**
+	while (WiFi.status() != WL_CONNECTED) {
+		Serial.print(WiFi.status());
+		delay(500);
+	}
+		*/
+	Serial.print(WiFi.localIP());
+	Serial.println("  signal: " + String(WiFi.RSSI()) );
+
+
+	timeClient.begin();
+
+	u8g2.begin();
+	u8g2.clearBuffer();
+	u8g2.setFont(u8g2_font_spleen8x16_mr);
+
+	getWeatherData();
+	getForecast();
+	Serial.println("-----Weather data downloaded-----");
+
+	timeClient.update();
+	updateCurrentTime();
+	lastUpdate = millis();
+
+	for (int i = 0; i < forecastNumber; i++) {
+    forecastTimes[i] = "--:--";
+		forecastIcons[i] = "---";
+	}
 }
 
+
 void loop() {
-  timeClient.update();
-  updateCurrentTime();
-  if (millis() - lastUpdate >= updateInterval) {
-    fetchWeatherData();
-    Serial.println("------Weather data fetched------");
-    fetchSunTimes();
-    lastUpdate = millis();
-  }
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_helvR08_tr);
-  arrowPos += arrowDirection ? 1 : -1;
-  if (arrowPos > 5) arrowDirection = false;
-  if (arrowPos < 0) arrowDirection = true;
-  u8g2.firstPage();
-  do {
-    //drawCalendar();
-    Serial.println("------Drawing Weather on LCD------");
-    drawCurrentWeather();
-    Serial.println("------Drawing Forecast on LCD------");
-    drawForecast();
-    Serial.println("------Drawing Arrow on LCD------");
-    drawArrow();
-    Serial.println("------Drawing Humidity on LCD------");
-    drawHumidityPressure();
-    Serial.println("------Drawing Sun Times on LCD------");
-    drawSunTimes();
-  } 
-  while (u8g2.nextPage());
-  u8g2.sendBuffer();
-  Serial.println("------Next page on LCD------");
-  delay(500);
+	u8g2.clearBuffer();
+	timeClient.update();
+	updateCurrentTime();
+
+	if (millis() - lastUpdate >= updateInterval) {
+		getWeatherData();
+		getForecast();
+		lastUpdate = millis();
+	}
+
+	u8g2.firstPage();
+	do {
+		drawForecast();
+		drawWeatherInfo();
+	} while (u8g2.nextPage());
+	delay(500);
 }

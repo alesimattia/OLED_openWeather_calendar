@@ -1,0 +1,45 @@
+{
+    "coord": {
+        "lon": 13.5189,
+        "lat": 43.6158
+    },
+    "weather": [
+        {
+            "id": 802,
+            "main": "Clouds",
+            "description": "nubi sparse",
+            "icon": "03n"
+        }
+    ],
+    "base": "stations",
+    "main": {
+        "temp": 24.33,
+        "feels_like": 24.83,
+        "temp_min": 23.77,
+        "temp_max": 25.84,
+        "pressure": 1012,
+        "humidity": 77,
+        "sea_level": 1012,
+        "grnd_level": 1003
+    },
+    "visibility": 10000,
+    "wind": {
+        "speed": 1.03,
+        "deg": 0
+    },
+    "clouds": {
+        "all": 48
+    },
+    "dt": 1752700280,
+    "sys": {
+        "type": 2,
+        "id": 2036652,
+        "country": "IT",
+        "sunrise": 1752637142,
+        "sunset": 1752691472
+    },
+    "timezone": 7200,
+    "id": 3174915,
+    "name": "Le Grazie di Ancona",
+    "cod": 200
+}

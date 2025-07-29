@@ -1,0 +1,137 @@
+{
+    "cod": "200",
+    "message": 0,
+    "cnt": 3,
+    "list": [
+        {
+            "dt": 1753714800,
+            "main": {
+                "temp": 19.76,
+                "feels_like": 20.25,
+                "temp_min": 19.76,
+                "temp_max": 23.07,
+                "pressure": 1005,
+                "sea_level": 1005,
+                "grnd_level": 997,
+                "humidity": 94,
+                "temp_kf": -3.31
+            },
+            "weather": [
+                {
+                    "id": 500,
+                    "main": "Rain",
+                    "description": "pioggia leggera",
+                    "icon": "10d"
+                }
+            ],
+            "clouds": {
+                "all": 100
+            },
+            "wind": {
+                "speed": 4.46,
+                "deg": 322,
+                "gust": 4.8
+            },
+            "visibility": 10000,
+            "pop": 1,
+            "rain": {
+                "3h": 2.6
+            },
+            "sys": {
+                "pod": "d"
+            },
+            "dt_txt": "2025-07-28 15:00:00"
+        },
+        {
+            "dt": 1753725600,
+            "main": {
+                "temp": 19.87,
+                "feels_like": 20.29,
+                "temp_min": 19.87,
+                "temp_max": 20.1,
+                "pressure": 1005,
+                "sea_level": 1005,
+                "grnd_level": 998,
+                "humidity": 91,
+                "temp_kf": -0.23
+            },
+            "weather": [
+                {
+                    "id": 500,
+                    "main": "Rain",
+                    "description": "pioggia leggera",
+                    "icon": "10d"
+                }
+            ],
+            "clouds": {
+                "all": 100
+            },
+            "wind": {
+                "speed": 5.96,
+                "deg": 281,
+                "gust": 7.57
+            },
+            "visibility": 10000,
+            "pop": 1,
+            "rain": {
+                "3h": 1.52
+            },
+            "sys": {
+                "pod": "d"
+            },
+            "dt_txt": "2025-07-28 18:00:00"
+        },
+        {
+            "dt": 1753736400,
+            "main": {
+                "temp": 21.42,
+                "feels_like": 21.86,
+                "temp_min": 21.42,
+                "temp_max": 22.25,
+                "pressure": 1005,
+                "sea_level": 1005,
+                "grnd_level": 999,
+                "humidity": 86,
+                "temp_kf": -0.83
+            },
+            "weather": [
+                {
+                    "id": 500,
+                    "main": "Rain",
+                    "description": "pioggia leggera",
+                    "icon": "10n"
+                }
+            ],
+            "clouds": {
+                "all": 100
+            },
+            "wind": {
+                "speed": 5.02,
+                "deg": 357,
+                "gust": 6.67
+            },
+            "visibility": 7821,
+            "pop": 1,
+            "rain": {
+                "3h": 1.24
+            },
+            "sys": {
+                "pod": "n"
+            },
+            "dt_txt": "2025-07-28 21:00:00"
+        }
+    ],
+    "city": {
+        "id": 3174915,
+        "name": "Le Grazie di Ancona",
+        "coord": {
+            "lat": 43.6158,
+            "lon": 13.5189
+        },
+        "country": "IT",
+        "population": 6385,
+        "timezone": 7200,
+        "sunrise": 1753674646,
+        "sunset": 1753727630
+    }
+}
