@@ -9,6 +9,26 @@
 #include "config.h"
 #include "icons.h"
 
+#define DISPLAY_WIDTH 128
+#define DISPLAY_HEIGHT 64
+
+//#define FONT_SMALL u8g2_font_5x8_mf
+#define FONT_SMALL u8g2_font_spleen5x8_mf
+
+const uint8_t FONT_SMALL_HEIGHT = 8;
+const uint8_t FONT_SMALL_WIDTH = 5;
+
+const uint8_t ICON_SIZE = 16;
+const uint8_t ARROW_SIZE = 8;
+const uint8_t BOX_PADDING = 3;
+const uint8_t BOX_RADIUS = 2;
+const uint8_t BOX_HEIGHT = FONT_SMALL_HEIGHT + 2;
+const uint8_t COLS = 4;
+const uint8_t COL_WIDTH = DISPLAY_WIDTH / COLS;
+const uint8_t CENTER_X = DISPLAY_WIDTH / 2;					//two text lines
+const uint8_t BASE_Y = DISPLAY_HEIGHT - (ICON_SIZE + 2*BOX_HEIGHT);
+
+
 const char* ssid = SSID;
 const char* password = SSID_PASSWORD;
 
@@ -31,14 +51,14 @@ int currentDay = 1;
 int currentHum = 0;
 //int currentPress = 0;
 double currentTemp = 0.0;
-double forecastTemp[forecastNumber] = {00.0};
+double forecastTemp[forecastNumber] = {0.0, 0.0, 0.0};
 String forecastTimes[forecastNumber];
 String forecastIcons[forecastNumber];
 
-String currentTime = "--:--";
+String currentTime = "00:00";
 String currentDescription = "--";
-String sunriseTime = "--:--";
-String sunsetTime = "--:--";
+String sunriseTime = "00:00";
+String sunsetTime = "00:00";
 
 unsigned long lastUpdate = 0;
 const unsigned long updateInterval = UPDATE_INTERVAL * 60 * 1000;  //[minutes]
@@ -147,78 +167,72 @@ void drawWeatherInfo() {
     float bmeTemp = 88.8;
     int bmeHum = 88;
 
-    u8g2.setFont(u8g2_font_5x8_mf);
-    
+    u8g2.setFont(FONT_SMALL);
+
     // Temperatura BME280 in alto a sinistra
-    int leftX = 2;
-    u8g2.setCursor(leftX, 8);  // Modificato per altezza font 8px
-    u8g2.print("T:");
+    u8g2.setCursor(0, FONT_SMALL_HEIGHT);
+    u8g2.print("T ");
     u8g2.print(bmeTemp, 1);
-    u8g2.print("C");
+    u8g2.print(" C");
 
     // Umidità BME280 sotto la temperatura
-    u8g2.setCursor(leftX, 18);  // Modificato per spaziatura appropriata
-    u8g2.print("H:");
+    u8g2.setCursor(0, FONT_SMALL_HEIGHT * 2 + 2);
+    u8g2.print("H  ");
     u8g2.print(bmeHum);
     u8g2.print("%");
 
     // Alba e tramonto al centro
-    int centerX = 64;
-    // Alba con icona a sinistra
-    u8g2.drawXBMP(centerX - 24, 2, 8, 8, icon_arrow_up);
-    u8g2.setCursor(centerX - 14, 8);  // Allineato con altezza font
+    int sunX = CENTER_X - ARROW_SIZE * 3;
+    // Alba
+    u8g2.drawXBMP(sunX, 2, ARROW_SIZE, ARROW_SIZE, icon_sunrise);
+    u8g2.setCursor(sunX + ARROW_SIZE + 2, FONT_SMALL_HEIGHT);
     u8g2.print(sunriseTime);
 
-    // Tramonto con icona a sinistra
-    u8g2.drawXBMP(centerX - 24, 12, 8, 8, icon_arrow_down);
-    u8g2.setCursor(centerX - 14, 18);  // Allineato sotto alba
+    // Tramonto
+    u8g2.drawXBMP(sunX, FONT_SMALL_HEIGHT + 4, ARROW_SIZE, ARROW_SIZE, icon_sunset);
+    u8g2.setCursor(sunX + ARROW_SIZE + 2, FONT_SMALL_HEIGHT * 2 + 2);
     u8g2.print(sunsetTime);
 
     // Orario attuale in alto a destra
-    int timeW = u8g2.getStrWidth(currentTime.c_str()) + 6; // Ridotto padding
-    int timeH = 10;  // Ridotto per il font più piccolo
-    int timeX = 128 - (timeW + 2);
-    int timeY = 2;
+    int timeW = u8g2.getStrWidth(currentTime.c_str()) + BOX_PADDING * 2;
+    int timeX = DISPLAY_WIDTH - timeW;
     u8g2.setDrawColor(1);
-    u8g2.drawRBox(timeX, timeY, timeW, timeH, 2); // Ridotto raggio angoli
+    u8g2.drawRBox(timeX, 0, timeW, BOX_HEIGHT, BOX_RADIUS);
     u8g2.setDrawColor(0);
-    u8g2.setCursor(timeX + 3, timeY + 8); // Modificato per centrare nel box più piccolo
+    u8g2.setCursor(timeX + BOX_PADDING, FONT_SMALL_HEIGHT);
     u8g2.print(currentTime);
     u8g2.setDrawColor(1);
 }
 
+
 void drawForecast() {
-    int elemW = 32;
-    int elemH = 32;
-    int iconSize = 16;
-    int baseY = 24;  // Abbassato leggermente
 
-    u8g2.setFont(u8g2_font_5x8_mf);
+    for (int i = 0; i < COLS; i++) {
+        int x = i * COL_WIDTH;
 
-    for (int i = 0; i < 4; i++) {
-        int x = i * elemW;
-        
         // Icona meteo
-        int iconX = x + (elemW - iconSize) / 2;
-        u8g2.drawXBMP(iconX, baseY, iconSize, iconSize, 
+        int iconX = x + (COL_WIDTH - ICON_SIZE) / 2;
+        u8g2.drawXBMP(iconX, BASE_Y, ICON_SIZE, ICON_SIZE,
             i < 3 ? getWeatherIcon(forecastIcons[i]) : getWeatherIcon(currentDescription));
 
         // Temperatura sotto l'icona
-        String temp = String(i < 3 ? forecastTemp[i] : currentTemp, 0) + "°";
+        String temp = String(i < 3 ? forecastTemp[i] : currentTemp, 0) + " C";
         int tempW = u8g2.getStrWidth(temp.c_str());
-        u8g2.setCursor(x + (elemW - tempW) / 2, baseY + iconSize + 8); // Modificato per font più piccolo
+        u8g2.setCursor(x + (COL_WIDTH - tempW) / 2, BASE_Y + ICON_SIZE + FONT_SMALL_HEIGHT);
+        u8g2.setFont(u8g2_font_5x8_mf);
+		u8g2.print(temp);
+		u8g2.setFont(FONT_SMALL);
 
-        // Orario sotto la temperatura
+        // Orario sotto la temperatura in box bianco stondato
         String time = i < 3 ? forecastTimes[i] : currentTime;
-        int timeW = u8g2.getStrWidth(time.c_str()) + 6; // Ridotto padding
-        int timeH = 10; // Ridotto per il font più piccolo
-        int timeX = x + (elemW - timeW) / 2;
-        int timeY = baseY + iconSize + 10;
-        
+        int timeW = u8g2.getStrWidth(time.c_str()) + BOX_PADDING * 2;
+        int timeX = x + (COL_WIDTH - timeW) / 2;
+        int timeY = BASE_Y + ICON_SIZE + FONT_SMALL_HEIGHT + 2;
+
         u8g2.setDrawColor(1);
-        u8g2.drawRBox(timeX, timeY, timeW, timeH, 2); // Ridotto raggio angoli
+        u8g2.drawRBox(timeX, timeY, timeW, BOX_HEIGHT, BOX_RADIUS);
         u8g2.setDrawColor(0);
-        u8g2.setCursor(timeX + 3, timeY + 8); // Modificato per centrare nel box più piccolo
+        u8g2.setCursor(timeX + BOX_PADDING, timeY + FONT_SMALL_HEIGHT);
         u8g2.print(time);
         u8g2.setDrawColor(1);
     }
@@ -241,12 +255,10 @@ void setup() {
 	WiFi.setSleepMode(WIFI_NONE_SLEEP);
 	
 	WiFi.begin(ssid, password);
-	/**
-	while (WiFi.status() != WL_CONNECTED) {
+	/*while (WiFi.status() != WL_CONNECTED) {
 		Serial.print(WiFi.status());
 		delay(500);
-	}
-		*/
+	}*/
 	Serial.print(WiFi.localIP());
 	Serial.println("  signal: " + String(WiFi.RSSI()) );
 
@@ -255,7 +267,7 @@ void setup() {
 
 	u8g2.begin();
 	u8g2.clearBuffer();
-	u8g2.setFont(u8g2_font_spleen8x16_mr);
+	u8g2.setFont(FONT_SMALL);
 
 	getWeatherData();
 	getForecast();
