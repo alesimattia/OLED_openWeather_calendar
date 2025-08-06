@@ -17,16 +17,17 @@
 
 const uint8_t FONT_SMALL_HEIGHT = 8;
 const uint8_t FONT_SMALL_WIDTH = 5;
+const uint8_t LINE_SPACING = 4;
 
-const uint8_t ICON_SIZE = 16;
-const uint8_t ARROW_SIZE = 8;
+const uint8_t WEATHER_ICON_SIZE = 16;
+const uint8_t ICON_SIZE = 8;
 const uint8_t BOX_PADDING = 3;
 const uint8_t BOX_RADIUS = 2;
 const uint8_t BOX_HEIGHT = FONT_SMALL_HEIGHT + 2;
 const uint8_t COLS = 4;
 const uint8_t COL_WIDTH = DISPLAY_WIDTH / COLS;
 const uint8_t CENTER_X = DISPLAY_WIDTH / 2;					//two text lines
-const uint8_t BASE_Y = DISPLAY_HEIGHT - (ICON_SIZE + 2*BOX_HEIGHT);
+const uint8_t BASE_Y = DISPLAY_HEIGHT - (WEATHER_ICON_SIZE + 2*BOX_HEIGHT);
 
 
 const char* ssid = SSID;
@@ -38,6 +39,7 @@ const String lat = (String)LAT;
 const String lon = (String)LON;
 const String units = "metric";
 const short forecastNumber = 3;
+const short TIMEZONE = 1; //UTC+1 => Rome
 
 // Display SSD1309 I2C 128x64
 /* https://github.com/olikraus/u8g2/wiki/u8g2setupc */
@@ -52,8 +54,8 @@ int currentHum = 0;
 //int currentPress = 0;
 double currentTemp = 0.0;
 double forecastTemp[forecastNumber] = {0.0, 0.0, 0.0};
-String forecastTimes[forecastNumber];
-String forecastIcons[forecastNumber];
+String forecastTimes[forecastNumber] = {"", "", ""};
+String forecastIcons[forecastNumber] = {"", "", ""};;
 
 String currentTime = "00:00";
 String currentDescription = "--";
@@ -79,6 +81,7 @@ String httpGETRequest(const char* serverName) {
 		int httpCode = https.GET();
 		if (httpCode == HTTP_CODE_OK) {
 			String payload = https.getString();
+			Serial.println("\n\n"+payload);
 			https.end();
 			return payload;
 		} 
@@ -98,11 +101,12 @@ String httpGETRequest(const char* serverName) {
 
 void getWeatherData() {
 	String currentWeather = httpGETRequest(currentWeatherURL.c_str());
+	if(currentWeather!="") Serial.println("\n Forecast data downloaded");
 
 	JsonDocument jsonCurrentWeather;
 	DeserializationError error = deserializeJson(jsonCurrentWeather, currentWeather);
 	if (error != DeserializationError::Ok) {
-		Serial.println("Error parsing JSON : " + String(error.c_str()));
+		Serial.println("Err. parsing JSON currentWeather: " + String(error.c_str()));
 		return;
 	}
 
@@ -131,11 +135,12 @@ void getWeatherData() {
 
 void getForecast() {
 	String forecast = httpGETRequest(forecastURL.c_str());
+	if(forecast!="") Serial.println("\n Forecast data downloaded");
 
 	JsonDocument jsonForecast;
 	DeserializationError error = deserializeJson(jsonForecast, forecast);
 	if (error != DeserializationError::Ok) {
-		Serial.println("Error parsing JSON : " + String(error.c_str()));
+		Serial.println("Err. parsing JSON forecast: " + String(error.c_str()));
 		return;
 	}
 
@@ -153,89 +158,88 @@ void getForecast() {
 
 
 void updateCurrentTime() {
-	time_t raw = timeClient.getEpochTime();
-	struct tm* ti = localtime(&raw);
-	currentTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
-	currentDay = ti->tm_mday;
-	if (currentDay < 1 || currentDay > 31) currentDay = 1;  // Fallback in case of invalid day
-															//Serial.println("Current time: " + currentTime + " | Day: " + String(currentDay));
+		time_t raw = timeClient.getEpochTime();
+		raw += TIMEZONE * 3600;
+		struct tm* ti = localtime(&raw);
+		currentTime = (ti->tm_hour < 10 ? "0" : "") + String(ti->tm_hour) + ":" + (ti->tm_min < 10 ? "0" : "") + String(ti->tm_min);
+		currentDay = ti->tm_mday;
+		if (currentDay < 1 || currentDay > 31) currentDay = 1;  // Fallback in case of invalid day
 }
 
 
 
 void drawWeatherInfo() {
-    float bmeTemp = 88.8;
-    int bmeHum = 88;
+		float bmeTemp = 88.8;
+		int bmeHum = 88;
 
-    u8g2.setFont(FONT_SMALL);
+		u8g2.setFont(FONT_SMALL);
 
-    // Temperatura BME280 in alto a sinistra
-    u8g2.setCursor(0, FONT_SMALL_HEIGHT);
-    u8g2.print("T ");
-    u8g2.print(bmeTemp, 1);
-    u8g2.print(" C");
+		// Temperatura BME280 in alto a sinistra
+		u8g2.drawXBMP(0, 0, 9, 9, icon_temp);
+		u8g2.setCursor(12, FONT_SMALL_HEIGHT);
+		u8g2.print(bmeTemp, 1);
+		u8g2.print("°C ");
 
-    // Umidità BME280 sotto la temperatura
-    u8g2.setCursor(0, FONT_SMALL_HEIGHT * 2 + 2);
-    u8g2.print("H  ");
-    u8g2.print(bmeHum);
-    u8g2.print("%");
+		// Umidità BME280 sotto la temperatura
+		u8g2.drawXBMP(0, FONT_SMALL_HEIGHT + LINE_SPACING, 9, 9, icon_humidity);
+		u8g2.setCursor(12, FONT_SMALL_HEIGHT * 2 + LINE_SPACING);
+		u8g2.print(bmeHum);
+		u8g2.print("%");
 
-    // Alba e tramonto al centro
-    int sunX = CENTER_X - ARROW_SIZE * 3;
-    // Alba
-    u8g2.drawXBMP(sunX, 2, ARROW_SIZE, ARROW_SIZE, icon_sunrise);
-    u8g2.setCursor(sunX + ARROW_SIZE + 2, FONT_SMALL_HEIGHT);
-    u8g2.print(sunriseTime);
+	
+		int sunX = CENTER_X - ICON_SIZE * 3;
+		// Alba
+		u8g2.drawXBMP(sunX, 1, ICON_SIZE, ICON_SIZE, icon_sunrise);
+		u8g2.setCursor(sunX + ICON_SIZE + LINE_SPACING, FONT_SMALL_HEIGHT);
+		u8g2.print(sunriseTime);
 
-    // Tramonto
-    u8g2.drawXBMP(sunX, FONT_SMALL_HEIGHT + 4, ARROW_SIZE, ARROW_SIZE, icon_sunset);
-    u8g2.setCursor(sunX + ARROW_SIZE + 2, FONT_SMALL_HEIGHT * 2 + 2);
-    u8g2.print(sunsetTime);
+		// Tramonto
+		u8g2.drawXBMP(sunX, ICON_SIZE + LINE_SPACING + 1, ICON_SIZE, ICON_SIZE, icon_sunset);
+		u8g2.setCursor(sunX + ICON_SIZE + LINE_SPACING, FONT_SMALL_HEIGHT * 2 + LINE_SPACING);
+		u8g2.print(sunsetTime);
 
-    // Orario attuale in alto a destra
-    int timeW = u8g2.getStrWidth(currentTime.c_str()) + BOX_PADDING * 2;
-    int timeX = DISPLAY_WIDTH - timeW;
-    u8g2.setDrawColor(1);
-    u8g2.drawRBox(timeX, 0, timeW, BOX_HEIGHT, BOX_RADIUS);
-    u8g2.setDrawColor(0);
-    u8g2.setCursor(timeX + BOX_PADDING, FONT_SMALL_HEIGHT);
-    u8g2.print(currentTime);
-    u8g2.setDrawColor(1);
+		// Orario attuale in alto a destra
+		int timeW = u8g2.getStrWidth(currentTime.c_str()) + BOX_PADDING * 2;
+		int timeX = DISPLAY_WIDTH - timeW;
+		u8g2.setDrawColor(1);
+		u8g2.drawRBox(timeX, 0, timeW, BOX_HEIGHT, BOX_RADIUS);
+		u8g2.setDrawColor(0);
+		u8g2.setCursor(timeX + BOX_PADDING, FONT_SMALL_HEIGHT);
+		u8g2.print(currentTime);
+		u8g2.setDrawColor(1);
 }
 
 
 void drawForecast() {
+		for (int i = 0; i < COLS; i++) {
+				int x = i * COL_WIDTH;
 
-    for (int i = 0; i < COLS; i++) {
-        int x = i * COL_WIDTH;
+				// Icona meteo
+				int iconX = x + (COL_WIDTH - WEATHER_ICON_SIZE) / 2;
+				u8g2.drawXBMP(iconX, BASE_Y, WEATHER_ICON_SIZE, WEATHER_ICON_SIZE,
+						i < 3 ? getWeatherIcon(forecastIcons[i]) : getWeatherIcon(currentDescription));
 
-        // Icona meteo
-        int iconX = x + (COL_WIDTH - ICON_SIZE) / 2;
-        u8g2.drawXBMP(iconX, BASE_Y, ICON_SIZE, ICON_SIZE,
-            i < 3 ? getWeatherIcon(forecastIcons[i]) : getWeatherIcon(currentDescription));
+				// Temperatura sotto l'icona
+				String temp = String(i < 3 ? forecastTemp[i] : currentTemp, 0) + " C";
+				int tempW = u8g2.getStrWidth(temp.c_str());
+				u8g2.setCursor(x + (COL_WIDTH - tempW) / 2, BASE_Y + WEATHER_ICON_SIZE + FONT_SMALL_HEIGHT);
+				u8g2.setFont(u8g2_font_5x8_mf);
+				u8g2.print(temp);
+				u8g2.setFont(FONT_SMALL);
 
-        // Temperatura sotto l'icona
-        String temp = String(i < 3 ? forecastTemp[i] : currentTemp, 0) + " C";
-        int tempW = u8g2.getStrWidth(temp.c_str());
-        u8g2.setCursor(x + (COL_WIDTH - tempW) / 2, BASE_Y + ICON_SIZE + FONT_SMALL_HEIGHT);
-        u8g2.setFont(u8g2_font_5x8_mf);
-		u8g2.print(temp);
-		u8g2.setFont(FONT_SMALL);
+				// Orario sotto la temperatura in box bianco stondato
+				String time = i < 3 ? forecastTimes[i] : currentTime;
+				int timeW = u8g2.getStrWidth(time.c_str()) + BOX_PADDING * 2;
+				int timeX = x + (COL_WIDTH - timeW) / 2;
+				int timeY = BASE_Y + WEATHER_ICON_SIZE + FONT_SMALL_HEIGHT + 2;
 
-        // Orario sotto la temperatura in box bianco stondato
-        String time = i < 3 ? forecastTimes[i] : currentTime;
-        int timeW = u8g2.getStrWidth(time.c_str()) + BOX_PADDING * 2;
-        int timeX = x + (COL_WIDTH - timeW) / 2;
-        int timeY = BASE_Y + ICON_SIZE + FONT_SMALL_HEIGHT + 2;
-
-        u8g2.setDrawColor(1);
-        u8g2.drawRBox(timeX, timeY, timeW, BOX_HEIGHT, BOX_RADIUS);
-        u8g2.setDrawColor(0);
-        u8g2.setCursor(timeX + BOX_PADDING, timeY + FONT_SMALL_HEIGHT);
-        u8g2.print(time);
-        u8g2.setDrawColor(1);
-    }
+				u8g2.setDrawColor(1);
+				u8g2.drawRBox(timeX, timeY, timeW, BOX_HEIGHT, BOX_RADIUS);
+				u8g2.setDrawColor(0);
+				u8g2.setCursor(timeX + BOX_PADDING, timeY + FONT_SMALL_HEIGHT);
+				u8g2.print(time);
+				u8g2.setDrawColor(1);
+		}
 }
 
 
@@ -250,15 +254,16 @@ void setup() {
 	delay(100);
 	WiFi.forceSleepWake();
 	delay(100);
-  	WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+		WiFi.setPhyMode(WIFI_PHY_MODE_11N);
 	WiFi.hostname("ESP-host");
 	WiFi.setSleepMode(WIFI_NONE_SLEEP);
 	
 	WiFi.begin(ssid, password);
-	/*while (WiFi.status() != WL_CONNECTED) {
+	while (WiFi.status() != WL_CONNECTED) {
 		Serial.print(WiFi.status());
 		delay(500);
-	}*/
+	}
+	Serial.println("");
 	Serial.print(WiFi.localIP());
 	Serial.println("  signal: " + String(WiFi.RSSI()) );
 
@@ -269,16 +274,15 @@ void setup() {
 	u8g2.clearBuffer();
 	u8g2.setFont(FONT_SMALL);
 
-	getWeatherData();
+	//getWeatherData();
 	getForecast();
-	Serial.println("-----Weather data downloaded-----");
 
 	timeClient.update();
 	updateCurrentTime();
 	lastUpdate = millis();
 
 	for (int i = 0; i < forecastNumber; i++) {
-    forecastTimes[i] = "--:--";
+		forecastTimes[i] = "--:--";
 		forecastIcons[i] = "---";
 	}
 }
@@ -290,7 +294,7 @@ void loop() {
 	updateCurrentTime();
 
 	if (millis() - lastUpdate >= updateInterval) {
-		getWeatherData();
+		//getWeatherData();
 		getForecast();
 		lastUpdate = millis();
 	}
