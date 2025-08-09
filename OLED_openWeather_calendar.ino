@@ -13,6 +13,7 @@
 #define DISPLAY_HEIGHT 64
 //#define FONT_SMALL u8g2_font_5x8_mf
 #define FONT_SMALL u8g2_font_spleen5x8_mf
+#define UPDATE_INTERVAL 30 //minutes
 
 const uint8_t FONT_SMALL_HEIGHT = 8;
 const uint8_t FONT_SMALL_WIDTH = 5;
@@ -257,12 +258,12 @@ void setup() {
 	
 	WiFi.begin(ssid, password);
 	while (WiFi.status() != WL_CONNECTED) {
-		Serial.print(WiFi.status());
+		Serial.print("Connecting to WIFI... status:");
+		Serial.println(WiFi.status());
 		delay(500);
 	}
-	Serial.print("\nConnected!");
 	Serial.print(WiFi.localIP());
-	Serial.print(" signal: " + String(WiFi.RSSI()));
+	Serial.println(" signal: " + String(WiFi.RSSI()));
 
 	timeClient.begin();
 	timeClient.update();
@@ -302,5 +303,5 @@ void loop() {
 	} 
 	while (u8g2.nextPage());
 
-	delay(55000); // Update every minute
+	delay(55000);
 }
