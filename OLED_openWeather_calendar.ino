@@ -9,10 +9,16 @@
 #include "config.h"
 #include "icons.h"
 
+#ifdef ESP01 //in Config.h
+#define SCL 2
+#define SDA 0
+#endif //else standard pinout
+
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
 #define FONT_SMALL u8g2_font_spleen5x8_mf
 #define UPDATE_INTERVAL 30 // minutes
+
 
 const char* ssid = SSID;
 const char* password = SSID_PASSWORD;
@@ -62,13 +68,26 @@ Adafruit_BME280 bme;
 float bmeTemp = 88.8; //placeholder
 uint8_t bmeHum = 88;
 
-// ---------------------- Funzioni ----------------------
+
 
 void setupTime() {
     configTime(0, 0, "pool.ntp.org", "time.nist.gov"); 
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
     tzset();
 }
+
+
+void updateCurrentTime() {
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    char buffer[6];
+    snprintf(buffer, sizeof(buffer), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+    currentTime = buffer;
+    currentDay = timeinfo.tm_mday;
+}
+
 
 String formatTimeFromEpoch(time_t epoch) {
     struct tm timeinfo;
@@ -78,10 +97,13 @@ String formatTimeFromEpoch(time_t epoch) {
     return String(buffer);
 }
 
+
 void wifiConnect() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
+        Serial.print("Connecting to WIFI... status:");
+        Serial.println(WiFi.status());
         delay(500);
     }
 }
@@ -106,6 +128,7 @@ String httpGETRequest(const char* serverName) {
     }
 }
 
+
 void getWeatherData() {
     String currentWeather = httpGETRequest(currentWeatherURL.c_str());
     if (currentWeather == "{}") return;
@@ -114,7 +137,7 @@ void getWeatherData() {
     if (deserializeJson(jsonCurrentWeather, currentWeather) != DeserializationError::Ok) return;
 
     currentHum = (int)jsonCurrentWeather["main"]["humidity"];
-    currentTemp = (float)jsonCurrentWeather["main"]["temp"].as<double>();
+    currentTemp = (float)jsonCurrentWeather["main"]["feels_like"].as<double>();
     currentDescription = String(jsonCurrentWeather["weather"][0]["main"]);
     time_t sunrise = (time_t)jsonCurrentWeather["sys"]["sunrise"];
     time_t sunset = (time_t)jsonCurrentWeather["sys"]["sunset"];
@@ -144,21 +167,11 @@ void getForecast() {
 }
 
 
-void updateCurrentTime() {
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    char buffer[6];
-    snprintf(buffer, sizeof(buffer), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-    currentTime = buffer;
-    currentDay = timeinfo.tm_mday;
-}
-
 void readBME280() {
     bmeTemp = (float) bme.readTemperature();
     bmeHum = (int) bme.readHumidity();
 }
+
 
 void drawWeatherInfo() {
     u8g2.setFont(FONT_SMALL);
@@ -198,6 +211,7 @@ void drawWeatherInfo() {
     u8g2.setDrawColor(1);
 }
 
+
 void drawForecast() {
     u8g2.setFont(FONT_SMALL);
 
@@ -230,11 +244,14 @@ void drawForecast() {
     }
 }
 
-
-
-// ---------------------- Setup & Loop ----------------------
+// -------------------------------------------------------
 
 void setup() {
+
+    if(ESP01) {
+        Wire.begin(SDA, SCL);
+    }
+    else Wire.begin();
     Serial.begin(115200);
     u8g2.begin();
     bme.begin(0x76);
@@ -256,11 +273,12 @@ void loop() {
     readBME280();
 
     if (millis() - lastUpdate >= updateInterval) {
-        wifiConnect();       // Riattiva Wi-Fi solo quando serve
+        wifiConnect();
+        setupTime();
         getWeatherData();
         getForecast();
-				WiFi.disconnect(false);
-				WiFi.mode(WIFI_OFF);
+        WiFi.disconnect(false);
+        WiFi.mode(WIFI_OFF);
         lastUpdate = millis();
     }
 
