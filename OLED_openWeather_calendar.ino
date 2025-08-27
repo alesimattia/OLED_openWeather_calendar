@@ -31,7 +31,7 @@ const String apiKey = APIKEY;
 const String lat = (String)LAT;
 const String lon = (String)LON;
 const String units = "metric";
-const uint8_t forecastNumber = 12; // scarico 12, mostro 3
+const uint8_t forecastNumber = 4; // show only 3 future forecasts
 
 const uint8_t LINE_SPACING = 4;
 const uint8_t FONT_SMALL_HEIGHT = 8;
@@ -59,7 +59,7 @@ String sunsetTime = "--:--";
 
 unsigned long lastUpdate = 0;
 const unsigned long updateInterval = UPDATE_INTERVAL * 60 * 1000;
-const unsigned long lightSleepTime = UPDATE_INTERVAL * 1000 - 5e6; // in uSeconds
+const unsigned long lightSleepTime = 30UL * 1e6UL; // in uSeconds
 
 // API URLs
 const String currentWeatherURL =
@@ -103,12 +103,14 @@ String formatTimeFromEpoch(time_t epoch) {
 void wifiConnect() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
-    Serial.print("Connessione WiFi");
+    Serial.print("Connecting to WiFi");
     while (WiFi.status() != WL_CONNECTED) {
         Serial.print(".");
         delay(500);
     }
-    Serial.println(" Connesso!");
+    Serial.println(" Connected!" + WiFi.localIP().toString());
+    Serial.print("RSSI: ");
+    Serial.println(WiFi.RSSI());
 }
 
 String httpGETRequest(const char* serverName) {
@@ -285,23 +287,28 @@ void drawForecast() {
 
         float temp = (i < totalCols - 1) ? forecastTemp[i] : currentTemp;
         String tempStr = String(temp, 1);
-        int tempW = u8g2.getStrWidth(tempStr.c_str());
-        u8g2.setCursor(x + (colWidth + extra - tempW) / 2, BASE_Y + WEATHER_ICON_SIZE + FONT_SMALL_HEIGHT);
+        int tempW = u8g2.getStrWidth(tempStr.c_str()) + BOX_PADDING * 2;
+        int tempXpos = x + (colWidth + extra - tempW) / 2;
+        int tempY = BASE_Y + WEATHER_ICON_SIZE;
+
+        // Rounded square around Temps.
+        u8g2.setDrawColor(1);
+        u8g2.drawRBox(tempXpos, tempY, tempW, BOX_HEIGHT, BOX_RADIUS);
+        u8g2.setDrawColor(0);
+        u8g2.setCursor(tempXpos + BOX_PADDING, tempY + FONT_SMALL_HEIGHT);
         u8g2.print(tempStr);
+        u8g2.setDrawColor(1);
+
 
         String time = (i < totalCols - 1) ? forecastTimes[i] : forecastDownloadTime;
-        int timeW = u8g2.getStrWidth(time.c_str()) + BOX_PADDING * 2;
+        int timeW = u8g2.getStrWidth(time.c_str());
         int timeXpos = x + (colWidth + extra - timeW) / 2;
         int timeY = BASE_Y + WEATHER_ICON_SIZE + FONT_SMALL_HEIGHT + 2;
-
-        u8g2.setDrawColor(1);
-        u8g2.drawRBox(timeXpos, timeY, timeW, BOX_HEIGHT, BOX_RADIUS);
-        u8g2.setDrawColor(0);
-        u8g2.setCursor(timeXpos + BOX_PADDING, timeY + FONT_SMALL_HEIGHT);
+        u8g2.setCursor(timeXpos, timeY + FONT_SMALL_HEIGHT);
         u8g2.print(time);
-        u8g2.setDrawColor(1);
     }
 }
+
 
 
 void setup() {
@@ -312,7 +319,7 @@ void setup() {
     bme.begin(0x76);
 
     wifiConnect();
-    
+
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     // POSIX TZ string per CET/CEST (va bene su ESP8266)
     setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
@@ -327,7 +334,6 @@ void setup() {
     updateCurrentTime();
     lastUpdate = millis();
 
-    wifi_fpm_set_sleep_type(LIGHT_SLEEP_T);
     wifi_set_sleep_type(LIGHT_SLEEP_T);
 }
 
