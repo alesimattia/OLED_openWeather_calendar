@@ -56,6 +56,7 @@ String currentTime = "00:00";
 String currentDescription = "--";
 String sunriseTime = "--:--";
 String sunsetTime = "--:--";
+String daylightHours;
 
 unsigned long lastUpdate = 0;
 const unsigned long updateInterval = UPDATE_INTERVAL * 60 * 1000;
@@ -162,6 +163,7 @@ void getWeatherData() {
     Serial.println(currentHum);
 }
 
+
 void getForecast() {
     String forecast = httpGETRequest(forecastURL.c_str());
     if (forecast == "{}") return;
@@ -224,10 +226,40 @@ void getForecast() {
     }
 }
 
+
 void readBME280() {
     bmeTemp = (float)bme.readTemperature();
     bmeHum = (int)bme.readHumidity();
 }
+
+
+void calculateDaylightHours(const String& sunrise, const String& sunset) {
+    int sunriseHour, sunriseMin;
+    int sunsetHour, sunsetMin;
+
+    // parsing hour in "HH:MM"
+    if (sscanf(sunrise.c_str(), "%d:%d", &sunriseHour, &sunriseMin) != 2) {
+        return "--h --m";
+    }
+    if (sscanf(sunset.c_str(), "%d:%d", &sunsetHour, &sunsetMin) != 2) {
+        return "--h --m";
+    }
+
+    // convert to minutes
+    int sunriseTotalMin = sunriseHour * 60 + sunriseMin;
+    int sunsetTotalMin = sunsetHour * 60 + sunsetMin;
+
+    // difference in minutes
+    int daylightMinutes = sunsetTotalMin - sunriseTotalMin;
+    if (daylightMinutes < 0) daylightMinutes += 24 * 60;
+
+    int hours = daylightMinutes / 60;
+    int minutes = daylightMinutes % 60;
+    
+    daylightHours = String(hours+"h " + minutes+"m");
+    Serial.println("Total Daylight time: " + daylightHours);
+}
+
 
 void drawWeatherInfo() {
     u8g2.setFont(FONT_SMALL);
@@ -266,6 +298,7 @@ void drawWeatherInfo() {
     u8g2.print(currentTime);
     u8g2.setDrawColor(1);
 }
+
 
 void drawForecast() {
     u8g2.setFont(FONT_SMALL);
@@ -327,6 +360,7 @@ void setup() {
 
     //getWeatherData();
     //getForecast();
+    calculateDaylightHours(sunriseTime, sunsetTime);
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
 
